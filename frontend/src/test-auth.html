@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auth Test</title>
+</head>
+<body>
+    <h1>Testing Auth API Response</h1>
+    <button onclick="testAuth()">Test /api/me endpoint</button>
+    <div id="result"></div>
+
+    <script>
+        async function testAuth() {
+            try {
+                const response = await fetch('/api/me', {
+                    credentials: 'include',
+                    headers: {
+                        'accept': 'application/json'
+                    }
+                });
+                
+                const text = await response.text();
+                const contentType = response.headers.get('content-type');
+                
+                let result = `Status: ${response.status}<br>`;
+                result += `Content-Type: ${contentType}<br>`;
+                result += `Response: ${text}<br>`;
+                
+                // Try to parse as JSON
+                try {
+                    const json = JSON.parse(text);
+                    result += `Parsed JSON: ${JSON.stringify(json, null, 2)}<br>`;
+                } catch (e) {
+                    result += `JSON Parse Error: ${e.message}<br>`;
+                }
+                
+                document.getElementById('result').innerHTML = result;
+            } catch (error) {
+                document.getElementById('result').innerHTML = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
