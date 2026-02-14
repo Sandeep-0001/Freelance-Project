@@ -1,11 +1,35 @@
 "use client";
 
-import { useState } from "react";
-import { Settings, Bell, Lock, Eye, Database } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Settings, Bell, Lock, Eye, Database, X, Mail, KeyRound } from "lucide-react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/apiClient";
+import { showSuccessToast, showErrorToast } from "@/lib/toast";
+import { useAuth } from "@/lib/useAuth";
 
 export default function SettingsPage() {
+  const { loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<"account" | "notifications" | "privacy" | "data">("account");
+  const [userEmail, setUserEmail] = useState<string>("Loading...");
+  const [loading, setLoading] = useState(false);
+  
+  // Modal states
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  
+  // Password form
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  
+  // Email form
+  const [emailForm, setEmailForm] = useState({
+    newEmail: "",
+    password: "",
+  });
+  
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: false,
@@ -17,12 +41,138 @@ export default function SettingsPage() {
     analyticsData: true,
   });
 
+  // Fetch user email
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const res = await apiFetch("/api/me");
+        const data = await res.json();
+        if (data.user?.email) {
+          setUserEmail(data.user.email);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user data:", error);
+        setUserEmail("Not available");
+      }
+    };
+    fetchUserData();
+  }, []);
+
   const handleToggle = (key: keyof typeof settings) => {
     setSettings((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
   };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      showErrorToast("All fields are required");
+      return;
+    }
+    
+    if (passwordForm.newPassword.length < 8) {
+      showErrorToast("New password must be at least 8 characters");
+      return;
+    }
+    
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      showErrorToast("New passwords do not match");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await apiFetch("/api/profile/change-password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+          confirmPassword: passwordForm.confirmPassword,
+        }),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        console.error("Failed to parse response:", parseError);
+        throw new Error("Server returned invalid response");
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to change password");
+      }
+
+      showSuccessToast(data?.message || "Password changed successfully");
+      setShowPasswordModal(false);
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (error) {
+      console.error("Password change error:", error);
+      showErrorToast(error instanceof Error ? error.message : "Failed to change password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!emailForm.newEmail || !emailForm.password) {
+      showErrorToast("All fields are required");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.newEmail)) {
+      showErrorToast("Invalid email format");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await apiFetch("/api/profile/change-email", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newEmail: emailForm.newEmail,
+          password: emailForm.password,
+        }),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        console.error("Failed to parse response:", parseError);
+        throw new Error("Server returned invalid response");
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to change email");
+      }
+
+      showSuccessToast(data?.message || "Email changed successfully");
+      setUserEmail(data?.email || emailForm.newEmail);
+      setShowEmailModal(false);
+      setEmailForm({ newEmail: "", password: "" });
+    } catch (error) {
+      console.error("Email change error:", error);
+      showErrorToast(error instanceof Error ? error.message : "Failed to change email");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50/60 via-white to-zinc-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-zinc-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const settingTabs = [
     { id: "account", label: "Account", icon: Lock },
@@ -167,6 +317,7 @@ export default function SettingsPage() {
                       <h3 className="font-extrabold text-zinc-900 mb-3">Change Password</h3>
                       <button
                         type="button"
+                        onClick={() => setShowPasswordModal(true)}
                         className="rounded-2xl bg-gradient-to-r from-emerald-600 to-sky-600 px-6 py-3 text-sm font-extrabold text-white shadow-lg transition hover:from-emerald-700 hover:to-sky-700 hover:shadow-xl"
                       >
                         Update Password
@@ -175,9 +326,10 @@ export default function SettingsPage() {
 
                     <div className="border-t border-zinc-200 pt-6">
                       <h3 className="font-extrabold text-zinc-900 mb-2">Email Address</h3>
-                      <p className="text-zinc-600 mb-4">your.email@example.com</p>
+                      <p className="text-zinc-600 mb-4">{userEmail}</p>
                       <button
                         type="button"
+                        onClick={() => setShowEmailModal(true)}
                         className="rounded-2xl border border-sky-200 bg-sky-50 px-6 py-3 text-sm font-extrabold text-sky-700 transition hover:bg-sky-100"
                       >
                         Change Email
@@ -283,7 +435,7 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-4 rounded-2xl borderounded-2xl border border-zinc-200 bg-zinc-50 p-5 hover:bg-white transition">
+                    <div className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 hover:bg-white transition">
                       <div>
                         <h3 className="font-extrabold text-zinc-900">Data Collection</h3>
                         <p className="text-sm text-zinc-600 mt-1">Allow us to collect usage data</p>
@@ -343,6 +495,196 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Change Password Modal */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-6 shadow-xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-sky-600 text-white shadow-md">
+                    <Lock className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-extrabold text-zinc-900">Change Password</h2>
+                    <p className="text-sm text-zinc-500">Update your account password</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="rounded-2xl border border-zinc-200 p-2 text-zinc-600 transition hover:bg-zinc-50"
+                  type="button"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Current Password <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Enter current password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    New Password <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Minimum 8 characters"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Confirm New Password <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Re-enter new password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  />
+                  {passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword && (
+                    <p className="mt-1.5 text-xs text-red-600">Passwords do not match</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  disabled={loading}
+                  className="rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-bold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-sky-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:from-emerald-700 hover:to-sky-700 hover:shadow-xl disabled:opacity-50"
+                  type="button"
+                >
+                  {loading ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="h-4 w-4" />
+                      Update Password
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Change Email Modal */}
+        {showEmailModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-6 shadow-xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 to-emerald-600 text-white shadow-md">
+                    <Mail className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-extrabold text-zinc-900">Change Email</h2>
+                    <p className="text-sm text-zinc-500">Update your email address</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="rounded-2xl border border-zinc-200 p-2 text-zinc-600 transition hover:bg-zinc-50"
+                  type="button"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-semibold">Current Email:</p>
+                <p className="mt-1">{userEmail}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    New Email Address <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="user@example.com"
+                    value={emailForm.newEmail}
+                    onChange={(e) => setEmailForm({ ...emailForm, newEmail: e.target.value })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Confirm Password <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Enter your password"
+                    value={emailForm.password}
+                    onChange={(e) => setEmailForm({ ...emailForm, password: e.target.value })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  />
+                  <p className="mt-1.5 text-xs text-zinc-500">Enter your password to confirm this change</p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  disabled={loading}
+                  className="rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-bold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleChangeEmail}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-600 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:from-sky-700 hover:to-emerald-700 hover:shadow-xl disabled:opacity-50"
+                  type="button"
+                >
+                  {loading ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="h-4 w-4" />
+                      Change Email
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,9 +10,17 @@ import {
   Ban,
   CheckCircle,
   ArrowLeft,
+  X,
+  Eye,
+  EyeOff,
+  Mail,
+  Phone,
+  Lock,
+  UserCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { showSuccessToast, showErrorToast } from "@/lib/toast";
 
 interface User {
   _id: string;
@@ -45,7 +53,7 @@ interface UsersResponse {
 }
 
 function UsersPage() {
-  useAuth({ requireAdmin: true });
+  const { user: currentUser } = useAuth({ requireAdmin: true });
   const searchParams = useSearchParams();
 
   const [users, setUsers] = useState<User[]>([]);
@@ -65,6 +73,20 @@ function UsersPage() {
   });
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Create user form state
+  const [createUserForm, setCreateUserForm] = useState({
+    name: "",
+    email: "",
+    mobile: "",
+    countryCode: "+91",
+    password: "",
+    confirmPassword: "",
+    role: "user" as "super_admin" | "admin" | "moderator" | "user",
+  });
 
   // Initialize filters from URL parameters
   useEffect(() => {
@@ -129,6 +151,73 @@ function UsersPage() {
       await fetchUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
+    }
+  };
+
+  const createUser = async () => {
+    // Validation
+    if (!createUserForm.name.trim()) {
+      showErrorToast("Name is required");
+      return;
+    }
+    if (!createUserForm.mobile.trim() || createUserForm.mobile.length < 10) {
+      showErrorToast("Valid mobile number is required (min 10 digits)");
+      return;
+    }
+    if (createUserForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createUserForm.email)) {
+      showErrorToast("Valid email is required");
+      return;
+    }
+    if (createUserForm.password.length < 8) {
+      showErrorToast("Password must be at least 8 characters");
+      return;
+    }
+    if (createUserForm.password !== createUserForm.confirmPassword) {
+      showErrorToast("Passwords do not match");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: createUserForm.name,
+          email: createUserForm.email || undefined,
+          mobile: createUserForm.mobile,
+          countryCode: createUserForm.countryCode,
+          password: createUserForm.password,
+          role: createUserForm.role,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create user");
+      }
+
+      showSuccessToast(data.message || "User created successfully");
+      setShowCreateModal(false);
+      
+      // Reset form
+      setCreateUserForm({
+        name: "",
+        email: "",
+        mobile: "",
+        countryCode: "+91",
+        password: "",
+        confirmPassword: "",
+        role: "user",
+      });
+
+      // Refresh user list
+      await fetchUsers();
+    } catch (err) {
+      showErrorToast(err instanceof Error ? err.message : "Failed to create user");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -492,35 +581,207 @@ function UsersPage() {
           </div>
         </div>
 
-        {/* Create User Modal Placeholder */}
+        {/* Create User Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-6 shadow-xl">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-50 to-sky-50 border border-emerald-100">
-                  <Users className="h-5 w-5 text-emerald-700" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-2xl rounded-3xl border border-zinc-200 bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-sky-600 text-white shadow-md">
+                    <Users className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-extrabold text-zinc-900">Create New User</h2>
+                    <p className="text-sm text-zinc-500">Add a new user account to the system</p>
+                  </div>
                 </div>
-                <h2 className="text-lg font-bold text-zinc-900">Create New User</h2>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="rounded-2xl border border-zinc-200 p-2 text-zinc-600 transition hover:bg-zinc-50"
+                  type="button"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <p className="text-sm text-zinc-600 mb-5">
-                User creation form will be implemented here.
-              </p>
+              <div className="space-y-5">
+                {/* Name Field */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Full Name <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <UserCircle className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="text"
+                      placeholder="Enter full name"
+                      value={createUserForm.name}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, name: e.target.value })}
+                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 !pl-12 pr-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                    />
+                  </div>
+                </div>
 
-              <div className="flex justify-end gap-2">
+                {/* Email Field */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="email"
+                      placeholder="user@example.com"
+                      value={createUserForm.email}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, email: e.target.value })}
+                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 !pl-12 pr-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Mobile Field */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Mobile Number <span className="text-red-600">*</span>
+                  </label>
+                  <div className="flex gap-3">
+                    <select
+                      value={createUserForm.countryCode}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, countryCode: e.target.value })}
+                      className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm font-semibold text-zinc-800 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                    >
+                      <option value="+91">+91</option>
+                      <option value="+1">+1</option>
+                      <option value="+44">+44</option>
+                    </select>
+                    <div className="relative flex-1">
+                      <Phone className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+                      <input
+                        type="tel"
+                        placeholder="10 digit mobile number"
+                        value={createUserForm.mobile}
+                        onChange={(e) => setCreateUserForm({ ...createUserForm, mobile: e.target.value.replace(/\D/g, '') })}
+                        className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 !pl-12 pr-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Role Field */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    User Role <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={createUserForm.role}
+                    onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value as any })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-800 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  >
+                    <option value="user">User</option>
+                    <option value="moderator">Moderator</option>
+                    {currentUser && (currentUser as any).role === "super_admin" && (
+                      <>
+                        <option value="admin">Admin</option>
+                        <option value="super_admin">Super Admin</option>
+                      </>
+                    )}
+                    {currentUser && (currentUser as any).role === "admin" && (
+                      <option value="admin" disabled>Admin (Super Admin Only)</option>
+                    )}
+                  </select>
+                  <p className="mt-1.5 text-xs text-zinc-500">
+                    {createUserForm.role === "super_admin" && "⚠️ Super Admin has full system access"}
+                    {createUserForm.role === "admin" && "Admin can manage users, services, and settings"}
+                    {createUserForm.role === "moderator" && "Moderator has limited admin access"}
+                    {createUserForm.role === "user" && "Regular user with standard permissions"}
+                  </p>
+                  {currentUser && (currentUser as any).role !== "super_admin" && (
+                    <p className="mt-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                      ℹ️ Only Super Admins can create Admin or Super Admin accounts
+                    </p>
+                  )}
+                </div>
+
+                {/* Password Field */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Password <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Minimum 8 characters"
+                      value={createUserForm.password}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, password: e.target.value })}
+                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 !pl-12 pr-12 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition"
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Confirm Password Field */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Confirm Password <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Re-enter password"
+                      value={createUserForm.confirmPassword}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, confirmPassword: e.target.value })}
+                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 !pl-12 pr-12 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  {createUserForm.confirmPassword && createUserForm.password !== createUserForm.confirmPassword && (
+                    <p className="mt-1.5 text-xs text-red-600">Passwords do not match</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="mt-8 flex justify-end gap-3">
                 <button
                   onClick={() => setShowCreateModal(false)}
-                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-800 transition hover:bg-zinc-50"
+                  disabled={creating}
+                  className="rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-bold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
                   type="button"
                 >
-                  Close
+                  Cancel
                 </button>
                 <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="rounded-2xl bg-gradient-to-r from-emerald-600 to-sky-600 px-4 py-2 text-sm font-bold text-white shadow-lg transition hover:from-emerald-700 hover:to-sky-700"
+                  onClick={createUser}
+                  disabled={creating}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-sky-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:from-emerald-700 hover:to-sky-700 hover:shadow-xl disabled:opacity-50"
                   type="button"
                 >
-                  Done
+                  {creating ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Create User
+                    </>
+                  )}
                 </button>
               </div>
             </div>

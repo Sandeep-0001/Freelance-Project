@@ -5,6 +5,7 @@ import { connectToDatabase } from "@/lib/db";
 import { authValidation, sendValidationError, sendSuccessResponse, VALIDATION_MESSAGES, formatZodError } from "@/lib/validation";
 import { UserModel } from "@/models/User";
 import { requireAuth } from "@/middleware/auth";
+import { comparePassword, hashPassword } from "@/lib/password";
 
 const router = Router();
 
@@ -302,6 +303,98 @@ router.post("/profile/clear-image", async (req, res) => {
   } catch (err: unknown) {
     console.error('Error clearing profile image:', err);
     const msg = err instanceof Error ? err.message : "Unable to clear profile image";
+    const status = msg.includes("log in") || msg.includes("Authentication") ? 401 : 400;
+    return res.status(status).json({ error: msg });
+  }
+});
+
+// Change password
+router.put("/profile/change-password", async (req, res) => {
+  try {
+    const ctx = await requireAuth(req);
+    const body = z.object({
+      currentPassword: z.string().min(1, "Current password is required"),
+      newPassword: z.string().min(8, "New password must be at least 8 characters"),
+      confirmPassword: z.string().min(1, "Please confirm your new password"),
+    }).refine(data => data.newPassword === data.confirmPassword, {
+      message: "Passwords do not match",
+      path: ["confirmPassword"],
+    }).parse(req.body);
+
+    await connectToDatabase();
+
+    const user = await UserModel.findById(ctx.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Verify current password
+    const isPasswordValid = await comparePassword(body.currentPassword, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+
+    // Hash new password
+    const passwordHash = await hashPassword(body.newPassword);
+
+    // Update password
+    await UserModel.findByIdAndUpdate(ctx.userId, { passwordHash });
+
+    return res.json({ message: "Password changed successfully" });
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: formatZodError(err) });
+    }
+    console.error('Error changing password:', err);
+    const msg = err instanceof Error ? err.message : "Unable to change password";
+    const status = msg.includes("log in") || msg.includes("Authentication") ? 401 : 400;
+    return res.status(status).json({ error: msg });
+  }
+});
+
+// Change email
+router.put("/profile/change-email", async (req, res) => {
+  try {
+    const ctx = await requireAuth(req);
+    const body = z.object({
+      newEmail: z.string().email("Invalid email format"),
+      password: z.string().min(1, "Password is required for verification"),
+    }).parse(req.body);
+
+    await connectToDatabase();
+
+    const user = await UserModel.findById(ctx.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Verify password
+    const isPasswordValid = await comparePassword(body.password, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: "Password is incorrect" });
+    }
+
+    // Check if email already exists
+    const existingEmail = await UserModel.findOne({ 
+      email: body.newEmail.toLowerCase(),
+      _id: { $ne: ctx.userId }
+    }).select("_id");
+    
+    if (existingEmail) {
+      return res.status(409).json({ error: "Email already exists" });
+    }
+
+    // Update email
+    await UserModel.findByIdAndUpdate(ctx.userId, { 
+      email: body.newEmail.toLowerCase() 
+    });
+
+    return res.json({ 
+      message: "Email changed successfully",
+      email: body.newEmail.toLowerCase()
+    });
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: formatZodError(err) });
+    }
+    console.error('Error changing email:', err);
+    const msg = err instanceof Error ? err.message : "Unable to change email";
     const status = msg.includes("log in") || msg.includes("Authentication") ? 401 : 400;
     return res.status(status).json({ error: msg });
   }

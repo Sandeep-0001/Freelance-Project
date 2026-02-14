@@ -194,7 +194,9 @@ export default function DashboardPage() {
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-teal-600 text-white">
                 <BarChart3 className="h-4 w-4" />
               </span>
-              <span className="text-sm font-semibold text-zinc-800">Admin / User Dashboard</span>
+              <span className="text-sm font-semibold text-zinc-800">
+                {me?.role === "admin" ? "Admin Dashboard" : "User Dashboard"}
+              </span>
             </div>
 
             <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">

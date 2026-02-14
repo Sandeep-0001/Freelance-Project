@@ -234,7 +234,8 @@ export function registerAdminRoutes(app: Express) {
 
   app.post("/api/admin/users", async (req: Request, res: Response) => {
     try {
-      await requireSuperAdminOrAdmin(req);
+      const ctx = await requireAuth(req);
+      
       const body = z.object({
         name: z.string().min(1),
         email: z.string().email({ message: "Invalid email format" }).optional(),
@@ -244,6 +245,16 @@ export function registerAdminRoutes(app: Express) {
         role: z.enum(["super_admin", "admin", "moderator", "user"]),
         referralCode: z.string().optional()
       }).parse(req.body);
+
+      // Only super_admin can create super_admin or admin accounts
+      if ((body.role === "super_admin" || body.role === "admin") && ctx.role !== "super_admin") {
+        return res.status(403).json({ error: "Only Super Admin can create Admin or Super Admin accounts" });
+      }
+
+      // Regular admins can only create moderator or user accounts
+      if (!["super_admin", "admin"].includes(ctx.role)) {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
 
       await connectToDatabase();
 
@@ -293,7 +304,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.put("/api/admin/users/:id/status", async (req: Request, res: Response) => {
     try {
-      await requireSuperAdminOrAdmin(req);
+      await requireRole(req, "super_admin");
       const body = z.object({
         status: z.enum(["active", "suspended", "deleted"])
       }).parse(req.body);
@@ -318,7 +329,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.delete("/api/admin/users/:id", async (req: Request, res: Response) => {
     try {
-      await requireSuperAdminOrAdmin(req);
+      await requireRole(req, "super_admin");
       await connectToDatabase();
 
       const user = await UserModel.findByIdAndUpdate(

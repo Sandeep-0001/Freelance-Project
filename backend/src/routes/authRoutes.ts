@@ -11,6 +11,7 @@ import { getBusinessOpportunityEmailContent } from "@/lib/businessOpportunity";
 import { sendEmail } from "@/lib/email";
 import { authValidation, sendValidationError, sendSuccessResponse, VALIDATION_MESSAGES, formatZodError } from "@/lib/validation";
 import { UserModel } from "@/models/User";
+import { PasswordResetModel } from "@/models/PasswordReset";
 import { authLimiter, requireAuth, setAuthCookie, clearAuthCookie, DUMMY_PASSWORD_HASH } from "@/middleware/auth";
 
 const router = Router();
@@ -96,6 +97,10 @@ router.post("/register", async (req, res) => {
         console.error("Failed to send welcome email:", err);
       }
     }, 0);
+
+    // Generate JWT and set auth cookie so user is logged in after registration
+    const token = await signAuthToken({ sub: user._id.toString(), role: user.role, email: user.email || undefined });
+    setAuthCookie(res, token);
 
     return sendSuccessResponse(res, {
       user: {
@@ -192,6 +197,124 @@ router.post("/logout", async (req, res) => {
     clearAuthCookie(res);
     const msg = err instanceof Error ? err.message : "Logout failed";
     return res.status(400).json({ error: msg });
+  }
+});
+
+// Generate OTP (6 digits)
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Forgot Password - Request OTP
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const schema = z.object({
+      email: z.string().email("Invalid email address"),
+    });
+
+    const body = schema.parse(req.body);
+    await connectToDatabase();
+
+    // Check if user exists
+    const user = await UserModel.findOne({ email: body.email.toLowerCase() }).select("_id email name");
+    if (!user) {
+      // Don't reveal if email exists or not for security
+      return sendSuccessResponse(res, {}, "If the email exists, an OTP has been sent to it");
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Delete any previous OTP requests for this email
+    await PasswordResetModel.deleteMany({ email: body.email.toLowerCase() });
+
+    // Store OTP
+    await PasswordResetModel.create({
+      email: body.email.toLowerCase(),
+      otp,
+      expiresAt,
+    });
+
+    // Send OTP email
+    try {
+      await sendEmail({
+        to: user.email!,
+        subject: "Password Reset OTP - ReferGrow",
+        text: `Hi ${user.name},\n\nYour password reset OTP is: ${otp}\n\nThis OTP will expire in 10 minutes.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nReferGrow Team`,
+      });
+    } catch (emailErr) {
+      console.error("Failed to send OTP email:", emailErr);
+      return sendValidationError(res, "Failed to send OTP email. Please try again later.", 500);
+    }
+
+    return sendSuccessResponse(res, {}, "OTP has been sent to your email");
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      return sendValidationError(res, formatZodError(err));
+    }
+    console.error('Error in forgot-password:', err);
+    const msg = err instanceof Error ? err.message : VALIDATION_MESSAGES.SERVER_ERROR;
+    return sendValidationError(res, msg);
+  }
+});
+
+// Reset Password - Verify OTP and Update Password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const schema = z.object({
+      email: z.string().email("Invalid email address"),
+      otp: z.string().min(6, "OTP must be 6 digits").max(6, "OTP must be 6 digits"),
+      newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    });
+
+    const body = schema.parse(req.body);
+    await connectToDatabase();
+
+    // Find valid OTP
+    const resetRequest = await PasswordResetModel.findOne({
+      email: body.email.toLowerCase(),
+      otp: body.otp,
+      used: false,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!resetRequest) {
+      return sendValidationError(res, "Invalid or expired OTP", 400);
+    }
+
+    // Find user
+    const user = await UserModel.findOne({ email: body.email.toLowerCase() });
+    if (!user) {
+      return sendValidationError(res, "User not found", 404);
+    }
+
+    // Update password
+    const passwordHash = await hashPassword(body.newPassword);
+    await UserModel.findByIdAndUpdate(user._id, { passwordHash });
+
+    // Mark OTP as used
+    await PasswordResetModel.findByIdAndUpdate(resetRequest._id, { used: true, verified: true });
+
+    // Send confirmation email
+    try {
+      await sendEmail({
+        to: user.email!,
+        subject: "Password Reset Successful - ReferGrow",
+        text: `Hi ${user.name},\n\nYour password has been successfully reset.\n\nIf you didn't make this change, please contact support immediately.\n\nBest regards,\nReferGrow Team`,
+      });
+    } catch (emailErr) {
+      console.error("Failed to send confirmation email:", emailErr);
+    }
+
+    return sendSuccessResponse(res, {}, "Password has been reset successfully. You can now login with your new password.");
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      return sendValidationError(res, formatZodError(err));
+    }
+    console.error('Error in reset-password:', err);
+    const msg = err instanceof Error ? err.message : VALIDATION_MESSAGES.SERVER_ERROR;
+    return sendValidationError(res, msg);
   }
 });
 

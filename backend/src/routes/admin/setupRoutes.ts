@@ -25,7 +25,7 @@ router.post("/setup", async (req, res) => {
 
     await connectToDatabase();
 
-    const existingAdmin = await UserModel.exists({ role: "admin" });
+    const existingAdmin = await UserModel.exists({ role: { $in: ["admin", "super_admin"] } });
     if (existingAdmin) return res.status(409).json({ error: "Admin already exists" });
 
     const existingEmail = await UserModel.exists({ email: body.email.toLowerCase() });
@@ -35,10 +35,10 @@ router.post("/setup", async (req, res) => {
     const referralCode = await generateUniqueReferralCode();
 
     const admin = await UserModel.create({
-      name: body.name ?? "Admin",
+      name: body.name ?? "Super Admin",
       email: body.email,
       passwordHash,
-      role: "admin",
+      role: "super_admin",
       referralCode,
       parent: null,
       position: null,

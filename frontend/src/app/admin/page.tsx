@@ -17,7 +17,33 @@ import {
 } from "lucide-react";
 
 export default function AdminPage() {
-  useAuth({ requireAdmin: true }); // Protect admin page
+  const { user } = useAuth({ requireAdmin: true }); // Protect admin page
+
+  // Determine role-specific title and badge text
+  const getRoleDisplay = () => {
+    const role = (user as any)?.role;
+    if (role === "super_admin") {
+      return {
+        title: "Super Admin Panel",
+        badgeText: "Super Admin",
+        description: "Full system access and control."
+      };
+    } else if (role === "admin") {
+      return {
+        title: "Admin Panel",
+        badgeText: "Admin",
+        description: "Manage your platform settings and configurations."
+      };
+    } else {
+      return {
+        title: "Admin Panel",
+        badgeText: "Moderator",
+        description: "Manage your platform settings and configurations."
+      };
+    }
+  };
+
+  const roleDisplay = getRoleDisplay();
 
   const cards = [
     {
@@ -101,14 +127,14 @@ export default function AdminPage() {
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-sky-600 text-white">
                 <Settings className="h-4 w-4" />
               </span>
-              <span className="text-sm font-semibold text-zinc-800">Admin</span>
+              <span className="text-sm font-semibold text-zinc-800">{roleDisplay.badgeText}</span>
             </div>
 
             <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
-              Admin Panel
+              {roleDisplay.title}
             </h1>
             <p className="mt-2 text-sm text-zinc-600">
-              Manage your platform settings and configurations.
+              {roleDisplay.description}
             </p>
           </div>
 
