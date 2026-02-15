@@ -7,7 +7,7 @@ import { generateUniqueReferralCode } from "@/lib/referral";
 import { importUpload } from "@/lib/upload";
 import { processBulkServiceUpload, generateServiceImportTemplate } from "@/lib/bulkServiceImport";
 import { processBulkCategoryUpload, generateCategoryImportTemplate } from "@/lib/bulkCategoryImport";
-import { requireAuth, requireRole, requireAdminRole, requireSuperAdminOrAdmin } from "@/middleware/auth";
+import { requireAuth, requireRole, requireAdminRole, requireSuperAdmin, requireSuperAdminOrAdmin } from "@/middleware/auth";
 
 import { UserModel } from "@/models/User";
 import { ServiceModel } from "@/models/Service";
@@ -488,7 +488,7 @@ export function registerAdminRoutes(app: Express) {
       businessVolume: z.number().min(0),
       shortDescription: z.string().max(200).optional(),
       description: z.string().optional(),
-      status: z.enum(["active", "inactive", "out_of_stock"]).default("active"),
+      status: z.enum(["pending_approval", "active", "inactive", "out_of_stock"]).optional(),
       isFeatured: z.boolean().default(false),
       categoryId: z.string().optional(),
       subcategoryId: z.string().optional(),
@@ -498,6 +498,7 @@ export function registerAdminRoutes(app: Express) {
 
     try {
       await requireAdminRole(req);
+      const ctx = await requireAuth(req);
       const body = schema.parse(req.body);
       await connectToDatabase();
 
@@ -513,6 +514,10 @@ export function registerAdminRoutes(app: Express) {
         return res.status(400).json({ error: `Service with slug "${slug}" already exists` });
       }
 
+      // Super admin can set any status, regular admin/moderator gets pending_approval
+      const isSuperAdmin = ctx.role === "super_admin";
+      const serviceStatus = body.status && isSuperAdmin ? body.status : "pending_approval";
+
       const service = await ServiceModel.create({
         name: body.name,
         slug,
@@ -525,7 +530,7 @@ export function registerAdminRoutes(app: Express) {
         businessVolume: body.businessVolume,
         shortDescription: body.shortDescription,
         description: body.description,
-        status: body.status,
+        status: serviceStatus,
         isFeatured: body.isFeatured,
         categoryId: body.categoryId,
         subcategoryId: body.subcategoryId,
@@ -548,7 +553,12 @@ export function registerAdminRoutes(app: Express) {
         };
       }
 
-      return res.status(201).json({ service: result });
+      return res.status(201).json({ 
+        service: result,
+        message: serviceStatus === "pending_approval" 
+          ? "Service created successfully. Waiting for super admin approval." 
+          : "Service created successfully."
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Bad request";
       const status = msg === "Forbidden" ? 403 : 400;
@@ -894,7 +904,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.put("/api/admin/services/:id/approve", async (req: Request, res: Response) => {
     try {
-      await requireAdminRole(req);
+      await requireSuperAdmin(req); // Only super admin can approve
       await connectToDatabase();
 
       const ctx = await requireAuth(req);
@@ -903,7 +913,7 @@ export function registerAdminRoutes(app: Express) {
         req.params.id,
         {
           $set: {
-            status: "approved",
+            status: "active", // Set to active when approved
             approvedAt: new Date(),
             approvedBy: ctx.userId
           }
@@ -913,17 +923,19 @@ export function registerAdminRoutes(app: Express) {
 
       if (!service) return res.status(404).json({ error: "Service not found" });
 
-      return res.json({ message: "Service approved successfully", service });
+      console.log(`[Service Approval] Service ${service._id} (${service.name}) approved by super admin ${ctx.userId}`);
+
+      return res.json({ message: "Service approved and activated successfully", service });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Bad request";
-      const status = msg === "Forbidden" ? 403 : 400;
+      const status = msg.includes("Forbidden") ? 403 : 400;
       return res.status(status).json({ error: msg });
     }
   });
 
   app.put("/api/admin/services/:id/reject", async (req: Request, res: Response) => {
     try {
-      await requireAdminRole(req);
+      await requireSuperAdmin(req); // Only super admin can reject
       const body = z.object({
         reason: z.string().min(1, "Rejection reason is required")
       }).parse(req.body);
@@ -947,10 +959,12 @@ export function registerAdminRoutes(app: Express) {
 
       if (!service) return res.status(404).json({ error: "Service not found" });
 
+      console.log(`[Service Rejection] Service ${service._id} (${service.name}) rejected by super admin ${ctx.userId}: ${body.reason}`);
+
       return res.json({ message: "Service rejected successfully", service });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Bad request";
-      const status = msg === "Forbidden" ? 403 : 400;
+      const status = msg.includes("Forbidden") ? 403 : 400;
       return res.status(status).json({ error: msg });
     }
   });

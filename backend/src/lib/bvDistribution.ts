@@ -49,24 +49,42 @@ async function distributeBusinessVolumeInSession(options: {
   session: mongoose.ClientSession;
 }): Promise<DistributeBVResult> {
   const { userObjectId, serviceObjectId, purchaseObjectId, session } = options;
+  const transactionId = purchaseObjectId?.toString() || `tx-${Date.now()}`;
+
+  console.log(`[BV Distribution ${transactionId}] Starting distribution for user ${userObjectId} purchasing service ${serviceObjectId}`);
 
   const rule = await getActiveDistributionRule(session);
+  console.log(`[BV Distribution ${transactionId}] Using rule: basePercentage=${rule.basePercentage * 100}%, decayEnabled=${rule.decayEnabled}`);
 
   const service = await ServiceModel.findById(serviceObjectId)
     .select("businessVolume status bv isActive")
     .session(session);
 
-  if (!service) throw new Error("Service not found");
+  if (!service) {
+    console.error(`[BV Distribution ${transactionId}] Service not found`);
+    throw new Error("Service not found");
+  }
 
   const legacyService = service as unknown as { isActive?: boolean; bv?: number };
   const status = service.status ?? (legacyService.isActive ? "active" : "inactive");
-  if (status !== "active") throw new Error("Service is inactive");
+  if (status !== "active") {
+    console.error(`[BV Distribution ${transactionId}] Service is inactive`);
+    throw new Error("Service is inactive");
+  }
 
   const bv = (service.businessVolume ?? legacyService.bv) as number;
-  if (!Number.isFinite(bv) || bv < 0) throw new Error("Service has invalid BV");
+  if (!Number.isFinite(bv) || bv < 0) {
+    console.error(`[BV Distribution ${transactionId}] Invalid BV: ${bv}`);
+    throw new Error("Service has invalid BV");
+  }
+
+  console.log(`[BV Distribution ${transactionId}] Service BV: ${bv}`);
 
   const buyer = await UserModel.findById(userObjectId).select("parent").session(session);
-  if (!buyer) throw new Error("User not found");
+  if (!buyer) {
+    console.error(`[BV Distribution ${transactionId}] Buyer not found`);
+    throw new Error("User not found");
+  }
 
   let parentId = buyer.parent ? new mongoose.Types.ObjectId(buyer.parent) : null;
   let level = 1;
@@ -93,12 +111,17 @@ async function distributeBusinessVolumeInSession(options: {
   // Guardrail for corrupt graphs (should be impossible with correct parent assignment).
   const MAX_LEVELS = 50_000;
 
+  console.log(`[BV Distribution ${transactionId}] Walking referral chain from buyer ${userObjectId}`);
+
   while (parentId) {
     const parentKey = parentId.toString();
     if (visited.has(parentKey)) {
+      console.error(`[BV Distribution ${transactionId}] Circular reference detected at level ${level}`);
       throw new Error("Circular reference detected in referral chain");
     }
     visited.add(parentKey);
+
+    console.log(`[BV Distribution ${transactionId}] Level ${level}: Parent ${parentKey} receives ${incomeAmount.toFixed(2)} (${(incomeAmount / bv * 100).toFixed(2)}% of BV)`);
 
     logs.push({
       fromUserId: userObjectId,
@@ -120,6 +143,7 @@ async function distributeBusinessVolumeInSession(options: {
     }
 
     if (level >= MAX_LEVELS) {
+      console.error(`[BV Distribution ${transactionId}] Referral chain exceeded MAX_LEVELS`);
       throw new Error("Referral chain too deep or corrupt");
     }
 
@@ -128,6 +152,7 @@ async function distributeBusinessVolumeInSession(options: {
 
     level += 1;
     if (!rule.decayEnabled) {
+      console.log(`[BV Distribution ${transactionId}] Decay disabled, stopping at level 1`);
       break;
     }
 
@@ -135,10 +160,14 @@ async function distributeBusinessVolumeInSession(options: {
   }
 
   if (logs.length > 0) {
+    console.log(`[BV Distribution ${transactionId}] Creating ${logs.length} income logs`);
     await IncomeLogModel.insertMany(logs, { session });
+  } else {
+    console.log(`[BV Distribution ${transactionId}] No referral parents found, no income distributed`);
   }
 
   if (purchaseObjectId && incomes.length > 0) {
+    console.log(`[BV Distribution ${transactionId}] Creating ${incomes.length} income records and updating user totals`);
     await IncomeModel.insertMany(incomes, { session });
     
     // Update totalIncome for each recipient user atomically
@@ -153,8 +182,11 @@ async function distributeBusinessVolumeInSession(options: {
         },
         { session }
       );
+      console.log(`[BV Distribution ${transactionId}] Updated User ${income.toUser}: +${income.amount.toFixed(2)} income, +${income.bv} BV`);
     }
   }
+
+  console.log(`[BV Distribution ${transactionId}] Distribution completed: ${logs.length} levels paid, total BV: ${bv}`);
 
   return {
     bv,
@@ -166,15 +198,29 @@ async function distributeBusinessVolumeInSession(options: {
 /**
  * Distribute Business Volume (BV) income up the referral chain.
  *
- * Rules:
- * - Input: userId, serviceId
- * - Fetch service BV
+ * Best Practices Implemented:
+ * - MongoDB transactions for atomicity and rollback safety
+ * - Atomic updates using $inc operator to prevent race conditions
+ * - Circular reference detection to prevent infinite loops
+ * - MAX_LEVELS guard against corrupt referral graphs
+ * - Comprehensive audit logging for debugging and compliance
+ * - Batch operations (insertMany) for performance
+ * - Session-based operations for transaction consistency
+ *
+ * Business Rules:
+ * - Input: userId (buyer), serviceId
+ * - Fetch service BV (business volume)
  * - Traverse referral parents upward
- * - Level 1 gets 5% of BV
- * - Each next level gets half of previous
- * - Stop when parent is null
- * - Store income logs in MongoDB
- * - Use MongoDB transaction to ensure consistency
+ * - Level 1 gets basePercentage (default 5%) of BV
+ * - Each next level gets half of previous (if decay enabled)
+ * - Stop when parent is null or decay disabled
+ * - Store income logs and income records in MongoDB
+ * - Atomically update each recipient's totalIncome and totalBV
+ *
+ * @param options Configuration with userId and serviceId
+ * @returns Distribution result with BV, logs created, and levels paid
+ * @throws Error if service not found, inactive, or invalid BV
+ * @throws Error if circular reference detected in referral chain
  */
 export async function distributeBusinessVolume(options: {
   userId: string;
@@ -207,7 +253,16 @@ export async function distributeBusinessVolume(options: {
 
 /**
  * Same distribution logic, but meant to be called inside another transaction.
- * Useful for "purchase + income logs" in a single atomic operation.
+ * Useful for "purchase + income distribution" in a single atomic operation.
+ *
+ * Key Features:
+ * - Participates in existing transaction (no new session created)
+ * - Links income records to purchase via purchaseId
+ * - Maintains transactional integrity with parent operation
+ * - Enables rollback of entire purchase flow on any failure
+ *
+ * @param options Configuration including existing session and optional purchaseId
+ * @returns Distribution result with BV, logs created, and levels paid
  */
 export async function distributeBusinessVolumeWithSession(options: {
   userId: string;

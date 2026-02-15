@@ -221,8 +221,7 @@ export default function AdminServicesPage() {
         slug: finalSlug,
         price, 
         businessVolume,
-        isFeatured,
-        status: "active" 
+        isFeatured
       };
       
       // Only include optional fields if they have values
@@ -249,7 +248,10 @@ export default function AdminServicesPage() {
       setIsFeatured(false);
       
       await loadServices();
-      showSuccessToast("Service created successfully");
+      
+      // Show appropriate message based on backend response
+      const successMessage = json.message || "Service created successfully";
+      showSuccessToast(successMessage);
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setError(errorMsg);

@@ -65,6 +65,12 @@ export async function requireAdminRole(req: Request): Promise<AuthContext> {
   return ctx;
 }
 
+export async function requireSuperAdmin(req: Request): Promise<AuthContext> {
+  const ctx = await requireAuth(req);
+  if (ctx.role !== "super_admin") throw new Error("Forbidden: Super admin access required");
+  return ctx;
+}
+
 export async function requireSuperAdminOrAdmin(req: Request): Promise<AuthContext> {
   const ctx = await requireAuth(req);
   if (!["super_admin", "admin"].includes(ctx.role)) throw new Error("Forbidden");

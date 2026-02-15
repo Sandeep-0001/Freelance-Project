@@ -165,12 +165,24 @@ export default function ServiceApprovalPage() {
       const response = await fetch(`/api/admin/services/${serviceId}/approve`, {
         method: "PUT",
       });
-      if (!response.ok) throw new Error("Failed to approve service");
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        const errorMsg = data.error || "Failed to approve service";
+        if (response.status === 403) {
+          throw new Error("Only Super Admin can approve services");
+        }
+        throw new Error(errorMsg);
+      }
 
+      showSuccessToast(data.message || "Service approved successfully");
       pingAdminUpdate();
       await fetchPendingServices();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMsg = err instanceof Error ? err.message : "An error occurred";
+      setError(errorMsg);
+      showErrorToast(errorMsg);
     } finally {
       setBusyId(null);
     }
@@ -187,8 +199,17 @@ export default function ServiceApprovalPage() {
         body: JSON.stringify({ reason }),
       });
 
-      if (!response.ok) throw new Error("Failed to reject service");
+      const data = await response.json();
 
+      if (!response.ok) {
+        const errorMsg = data.error || "Failed to reject service";
+        if (response.status === 403) {
+          throw new Error("Only Super Admin can reject services");
+        }
+        throw new Error(errorMsg);
+      }
+
+      showSuccessToast(data.message || "Service rejected successfully");
       setShowRejectModal(false);
       setRejectionReason("");
       setSelectedService(null);
@@ -196,7 +217,9 @@ export default function ServiceApprovalPage() {
       pingAdminUpdate();
       await fetchPendingServices();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMsg = err instanceof Error ? err.message : "An error occurred";
+      setError(errorMsg);
+      showErrorToast(errorMsg);
     } finally {
       setBusyId(null);
     }
