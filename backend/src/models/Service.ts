@@ -39,8 +39,8 @@ const serviceSchema = new Schema(
     // Service status
     status: { 
       type: String, 
-      enum: ["active", "inactive", "out_of_stock"], 
-      default: "active", 
+      enum: ["pending_approval", "approved", "rejected", "active", "inactive", "out_of_stock"], 
+      default: "pending_approval", 
       index: true 
     },
     
@@ -56,6 +56,13 @@ const serviceSchema = new Schema(
     // Rating and reviews
     rating: { type: Number, min: 0, max: 5, default: 0 },
     reviewCount: { type: Number, min: 0, default: 0 },
+
+    // Approval tracking
+    approvedAt: { type: Date },
+    approvedBy: { type: String, ref: "User" },
+    rejectedAt: { type: Date },
+    rejectedBy: { type: String, ref: "User" },
+    rejectionReason: { type: String, trim: true },
   },
   { timestamps: true }
 );

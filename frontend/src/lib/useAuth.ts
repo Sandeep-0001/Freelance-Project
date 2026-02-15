@@ -10,7 +10,7 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((s) => s.user.profile);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!currentUser); // Only show loading if no user yet
   const hasCheckedAuth = useRef(false);
 
   // Initial load from localStorage if no user in Redux state
@@ -21,11 +21,14 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
         try {
           const user = JSON.parse(storedUser);
           dispatch(setUserProfile(user));
+          setLoading(false); // We have a user from localStorage, no need to wait
         } catch {
           console.warn("Failed to parse stored user");
           localStorage.removeItem('user');
         }
       }
+    } else {
+      setLoading(false); // We already have a user
     }
   }, [dispatch, currentUser]);
 
@@ -44,7 +47,11 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
 
     const checkAuth = async () => {
       try {
-        setLoading(true);
+        // Only show loading if we don't have a user yet
+        if (!currentUser) {
+          setLoading(true);
+        }
+        
         const res = await apiFetch("/api/me");
         const body = await readApiBody(res);
         
@@ -100,6 +107,7 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
     };
 
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, options?.requireAdmin, dispatch]);
 
   return { user: currentUser, loading };

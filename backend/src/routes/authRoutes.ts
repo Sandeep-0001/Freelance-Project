@@ -135,7 +135,7 @@ router.post("/login", async (req, res) => {
     // Find user by email or mobile
     const user = await UserModel.findOne(
       isEmail 
-        ? { email: emailOrPhone }
+        ? { email: emailOrPhone.toLowerCase() }
         : { mobile: emailOrPhone }
     );
     

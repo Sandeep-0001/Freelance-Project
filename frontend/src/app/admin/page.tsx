@@ -65,10 +65,10 @@ export default function AdminPage() {
       icon: UserCheck,
     },
     {
-      href: "/admin/categories",
-      title: "Categories & Subcategories",
-      desc: "Manage service categories and subcategories",
-      icon: FolderOpen,
+      href: "/admin/services",
+      title: "Services Management",
+      desc: "Manage services, categories, subcategories, pricing and business volume",
+      icon: Settings,
     },
     {
       href: "/admin/kyc",
@@ -87,12 +87,6 @@ export default function AdminPage() {
       title: "Contact Submissions",
       desc: "View and manage contact form submissions from users",
       icon: Mail,
-    },
-    {
-      href: "/admin/services",
-      title: "Services",
-      desc: "Create and manage services, set pricing and business volume",
-      icon: Settings,
     },
     {
       href: "/admin/slider",

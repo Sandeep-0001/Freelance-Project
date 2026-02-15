@@ -438,8 +438,36 @@ export function registerAdminRoutes(app: Express) {
     try {
       await requireAdminRole(req);
       await connectToDatabase();
-      const services = await ServiceModel.find({}).sort({ createdAt: -1 });
-      return res.json({ services });
+      
+      const services = await ServiceModel.find({})
+        .populate('categoryId', 'name code')
+        .sort({ createdAt: -1 })
+        .lean();
+      
+      // Format the response to include category in a consistent way
+      const formattedServices = services.map(service => {
+        const result: any = {
+          ...service,
+        };
+        
+        // If categoryId is populated (it's an object), add it as 'category'
+        if (service.categoryId && typeof service.categoryId === 'object') {
+          result.category = {
+            _id: service.categoryId._id,
+            name: service.categoryId.name,
+            code: service.categoryId.code
+          };
+          result.categoryId = service.categoryId._id; // Keep the ID as string for consistency
+        } else {
+          // categoryId is either a string ID (not populated), null, or empty
+          result.categoryId = service.categoryId || undefined;
+          result.category = undefined;
+        }
+        
+        return result;
+      });
+      
+      return res.json({ services: formattedServices });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Forbidden";
       const status = msg === "Forbidden" ? 403 : 400;
@@ -463,6 +491,8 @@ export function registerAdminRoutes(app: Express) {
       status: z.enum(["active", "inactive", "out_of_stock"]).default("active"),
       isFeatured: z.boolean().default(false),
       categoryId: z.string().optional(),
+      subcategoryId: z.string().optional(),
+      addedBy: z.enum(["admin", "user"]).default("admin"),
       tags: z.array(z.string()).optional(),
     });
 
@@ -498,10 +528,27 @@ export function registerAdminRoutes(app: Express) {
         status: body.status,
         isFeatured: body.isFeatured,
         categoryId: body.categoryId,
+        subcategoryId: body.subcategoryId,
+        addedBy: body.addedBy,
         tags: body.tags,
       });
 
-      return res.status(201).json({ service });
+      // Fetch the created service with populated category
+      const populatedService = await ServiceModel.findById(service._id)
+        .populate('categoryId', 'name code')
+        .lean();
+
+      // Format response with category
+      const result: any = { ...populatedService };
+      if (populatedService && populatedService.categoryId && typeof populatedService.categoryId === 'object') {
+        result.category = {
+          _id: populatedService.categoryId._id,
+          name: populatedService.categoryId.name,
+          code: populatedService.categoryId.code
+        };
+      }
+
+      return res.status(201).json({ service: result });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Bad request";
       const status = msg === "Forbidden" ? 403 : 400;
@@ -525,7 +572,7 @@ export function registerAdminRoutes(app: Express) {
         description: z.string().optional(),
         status: z.enum(["active", "inactive", "out_of_stock"]).optional(),
         isFeatured: z.boolean().optional(),
-        categoryId: z.string().optional(),
+        categoryId: z.string().nullable().optional(),
         tags: z.array(z.string()).optional(),
       })
       .refine((v) => Object.keys(v).length > 0, "No fields to update");
@@ -535,9 +582,31 @@ export function registerAdminRoutes(app: Express) {
       const body = schema.parse(req.body);
       await connectToDatabase();
 
-      const service = await ServiceModel.findByIdAndUpdate(req.params.id, body, { new: true });
+      const service = await ServiceModel.findByIdAndUpdate(
+        req.params.id, 
+        body, 
+        { new: true }
+      )
+        .populate('categoryId', 'name code')
+        .lean();
+      
       if (!service) return res.status(404).json({ error: "Not found" });
-      return res.json({ service });
+      
+      // Format response with category
+      const result: any = { ...service };
+      if (service.categoryId && typeof service.categoryId === 'object') {
+        result.category = {
+          _id: service.categoryId._id,
+          name: service.categoryId.name,
+          code: service.categoryId.code
+        };
+        result.categoryId = service.categoryId._id; // Keep the ID as string
+      } else {
+        result.categoryId = service.categoryId || undefined;
+        result.category = undefined;
+      }
+      
+      return res.json({ service: result });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Bad request";
       const status = msg === "Forbidden" ? 403 : 400;
@@ -1052,6 +1121,23 @@ export function registerAdminRoutes(app: Express) {
   // CATEGORY MANAGEMENT
   // ============================================================================
   
+  app.get("/api/admin/categories", async (req: Request, res: Response) => {
+    try {
+      await requireAdminRole(req);
+      await connectToDatabase();
+      
+      const categories = await CategoryModel.find({})
+        .sort({ sortOrder: 1, name: 1 })
+        .lean();
+      
+      return res.json({ categories });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Bad request";
+      const status = msg === "Forbidden" ? 403 : 400;
+      return res.status(status).json({ error: msg });
+    }
+  });
+
   app.post("/api/admin/categories", async (req: Request, res: Response) => {
     try {
       await requireSuperAdminOrAdmin(req);
