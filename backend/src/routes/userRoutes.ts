@@ -5,7 +5,7 @@ import { connectToDatabase } from "@/lib/db";
 import { authValidation, sendValidationError, sendSuccessResponse, VALIDATION_MESSAGES, formatZodError } from "@/lib/validation";
 import { UserModel } from "@/models/User";
 import { requireAuth } from "@/middleware/auth";
-import { comparePassword, hashPassword } from "@/lib/password";
+import { verifyPassword, hashPassword } from "@/lib/password";
 
 const router = Router();
 
@@ -327,7 +327,7 @@ router.put("/profile/change-password", async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // Verify current password
-    const isPasswordValid = await comparePassword(body.currentPassword, user.passwordHash);
+    const isPasswordValid = await verifyPassword(body.currentPassword, user.passwordHash);
     if (!isPasswordValid) {
       return res.status(400).json({ error: "Current password is incorrect" });
     }
@@ -365,7 +365,7 @@ router.put("/profile/change-email", async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // Verify password
-    const isPasswordValid = await comparePassword(body.password, user.passwordHash);
+    const isPasswordValid = await verifyPassword(body.password, user.passwordHash);
     if (!isPasswordValid) {
       return res.status(400).json({ error: "Password is incorrect" });
     }
