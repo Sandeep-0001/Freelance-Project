@@ -184,11 +184,6 @@ export default function ImageSlider({
 
   const currentSlide = slides[currentIndex];
 
-  // Debug: Check if we have slides and current slide
-  if (slides.length > 0) {
-    console.log('Sliders found:', slides.length, 'Current slide:', currentSlide);
-  }
-
   // Check if image URL is valid (not a redirect or invalid URL)
   const isValidImageUrl = (url: string) => {
     if (!url) return false;

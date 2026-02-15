@@ -129,3 +129,11 @@ config.local.*
 *.key
 *.cert
 *.crt
+
+# ===============================
+# User uploads (CONFIDENTIAL)
+# ===============================
+backend/uploads/*
+!backend/uploads/.gitkeep
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep

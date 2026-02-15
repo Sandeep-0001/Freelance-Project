@@ -194,8 +194,6 @@ export default function ProfilePage() {
     formData.append("image", profileImage);
 
     try {
-      console.log("Uploading image:", profileImage.name, "Size:", profileImage.size);
-
       // Use fetch directly for FormData uploads (apiFetch may interfere with multipart/form-data)
       const res = await fetch("/api/upload/profile-image", {
         method: "POST",
@@ -208,7 +206,6 @@ export default function ProfilePage() {
       });
 
       const body = await res.json();
-      console.log("Upload response:", body, "Status:", res.status);
 
       if (!res.ok) {
         throw new Error(body.error || "Upload failed");

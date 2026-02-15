@@ -24,7 +24,7 @@ type MeResponse = {
   user: {
     id: string;
     email: string;
-    role: "admin" | "user";
+    role: "super_admin" | "admin" | "moderator" | "user";
     referralCode: string;
     parent: string | null;
   };
@@ -195,7 +195,7 @@ export default function DashboardPage() {
                 <BarChart3 className="h-4 w-4" />
               </span>
               <span className="text-sm font-semibold text-zinc-800">
-                {me?.role === "admin" ? "Admin Dashboard" : "User Dashboard"}
+                {["super_admin", "admin", "moderator"].includes(me?.role || "") ? "Admin Dashboard" : "User Dashboard"}
               </span>
             </div>
 
@@ -214,14 +214,14 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            {me?.role === "admin" ? (
+            {["super_admin", "admin", "moderator"].includes(me?.role || "") ? (
               <Link
                 className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
                 prefetch={false}
-                href="/admin/services"
+                href="/admin"
               >
                 <Settings2 className="h-4 w-4" />
-                Manage Services
+                Admin Panel
               </Link>
             ) : null}
 

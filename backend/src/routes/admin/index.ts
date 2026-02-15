@@ -30,7 +30,7 @@ export function registerAdminRoutes(app: Express) {
   
   app.get("/api/admin/dashboard", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const [totalUsers, activeServices] = await Promise.all([
@@ -327,6 +327,88 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  // Update user referral parent (only super_admin can assign parent to users without one)
+  app.put("/api/admin/users/:id/referral", async (req: Request, res: Response) => {
+    try {
+      await requireRole(req, "super_admin");
+      const body = z.object({
+        referralCode: z.string().min(1, "Referral code is required"),
+        position: z.enum(["left", "right"]).optional()
+      }).parse(req.body);
+
+      await connectToDatabase();
+
+      // Find the user to update
+      const user = await UserModel.findById(req.params.id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      // Check if user already has a parent
+      if (user.parent) {
+        return res.status(400).json({ error: "User already has a referral parent. Cannot change referral hierarchy." });
+      }
+
+      // Find the parent by referral code
+      const parentUser = await UserModel.findOne({ referralCode: body.referralCode });
+      if (!parentUser) {
+        return res.status(404).json({ error: "Invalid referral code. Parent user not found." });
+      }
+
+      // Prevent self-referral
+      if (parentUser._id.toString() === user._id.toString()) {
+        return res.status(400).json({ error: "Cannot refer yourself" });
+      }
+
+      // Determine position if not provided
+      let position = body.position;
+      if (!position) {
+        // Auto-assign position based on availability
+        const leftChild = await UserModel.findOne({ parent: parentUser._id, position: "left" });
+        const rightChild = await UserModel.findOne({ parent: parentUser._id, position: "right" });
+
+        if (!leftChild) {
+          position = "left";
+        } else if (!rightChild) {
+          position = "right";
+        } else {
+          return res.status(400).json({ error: "Both positions under this referral are already filled" });
+        }
+      } else {
+        // Check if the specified position is available
+        const existingChild = await UserModel.findOne({ parent: parentUser._id, position });
+        if (existingChild) {
+          return res.status(400).json({ error: `The ${position} position under this referral is already filled` });
+        }
+      }
+
+      // Update the user with parent and position
+      user.parent = parentUser._id;
+      user.position = position;
+      await user.save();
+
+      return res.json({ 
+        message: "Referral parent assigned successfully", 
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          mobile: user.mobile,
+          parent: {
+            _id: parentUser._id,
+            name: parentUser.name,
+            email: parentUser.email,
+            mobile: parentUser.mobile,
+            referralCode: parentUser.referralCode
+          },
+          position: user.position
+        }
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Bad request";
+      const status = msg === "Forbidden" ? 403 : 400;
+      return res.status(status).json({ error: msg });
+    }
+  });
+
   app.delete("/api/admin/users/:id", async (req: Request, res: Response) => {
     try {
       await requireRole(req, "super_admin");
@@ -354,7 +436,7 @@ export function registerAdminRoutes(app: Express) {
   
   app.get("/api/admin/services", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
       const services = await ServiceModel.find({}).sort({ createdAt: -1 });
       return res.json({ services });
@@ -385,7 +467,7 @@ export function registerAdminRoutes(app: Express) {
     });
 
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       const body = schema.parse(req.body);
       await connectToDatabase();
 
@@ -449,7 +531,7 @@ export function registerAdminRoutes(app: Express) {
       .refine((v) => Object.keys(v).length > 0, "No fields to update");
 
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       const body = schema.parse(req.body);
       await connectToDatabase();
 
@@ -542,7 +624,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.post("/api/admin/services/bulk", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const { services, format } = req.body;
@@ -595,7 +677,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.get("/api/admin/services/by-category", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const { categoryId, sortBy = 'sortOrder', sortOrder = 'asc' } = req.query;
@@ -633,7 +715,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.get("/api/admin/services/export", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const { format = 'json', categoryId, sortBy = 'sortOrder', sortOrder = 'asc' } = req.query;
@@ -810,7 +892,7 @@ export function registerAdminRoutes(app: Express) {
   
   app.get("/api/admin/contacts", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const contacts = await ContactModel.find({})
@@ -831,7 +913,7 @@ export function registerAdminRoutes(app: Express) {
     });
 
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       const body = schema.parse(req.body);
       await connectToDatabase();
 
@@ -856,7 +938,7 @@ export function registerAdminRoutes(app: Express) {
   
   app.get("/api/admin/sliders", async (req: Request, res: Response) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
       const sliders = await Slider.find()
         .sort({ order: 1 })
@@ -879,7 +961,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.post("/api/admin/sliders", async (req: Request, res: Response) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       const body = sliderCreateSchema.parse(req.body);
       await connectToDatabase();
 
@@ -903,7 +985,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.put("/api/admin/sliders/reorder", async (req: Request, res: Response) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       const reorderSchema = z.object({
         sliders: z.array(z.object({
           id: z.string().min(1),
@@ -931,7 +1013,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.put("/api/admin/sliders/:id", async (req: Request, res: Response) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       const body = sliderUpdateSchema.parse(req.body);
       await connectToDatabase();
 
@@ -952,7 +1034,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.delete("/api/admin/sliders/:id", async (req: Request, res: Response) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const slider = await Slider.findByIdAndDelete(req.params.id);
@@ -1162,7 +1244,7 @@ export function registerAdminRoutes(app: Express) {
   
   app.get("/api/admin/rules", async (req, res) => {
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const activeRule = await DistributionRuleModel.findOne({ isActive: true }).sort({ createdAt: -1 });
@@ -1188,7 +1270,7 @@ export function registerAdminRoutes(app: Express) {
     });
 
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const body = schema.parse(req.body);
@@ -1227,7 +1309,7 @@ export function registerAdminRoutes(app: Express) {
       .refine((v) => Object.keys(v).length > 0, "No fields to update");
 
     try {
-      await requireRole(req, "admin");
+      await requireAdminRole(req);
       await connectToDatabase();
 
       const body = schema.parse(req.body);
@@ -1385,3 +1467,4 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 }
+

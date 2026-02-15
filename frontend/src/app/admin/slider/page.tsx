@@ -179,14 +179,12 @@ export default function AdminSliderPage() {
     setSuccess(null);
 
     try {
-      console.log("Sending reorder data:", { sliders: reorderedSliders });
       const res = await apiFetch("/api/admin/sliders/reorder", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sliders: reorderedSliders }),
       });
       const body = await readApiBody(res);
-      console.log("Response:", res.status, body);
       if (!res.ok) throw new Error((body.json as any)?.error ?? "Failed to reorder sliders");
 
       showSuccessToast("Sliders reordered successfully!");

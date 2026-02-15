@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, readApiBody } from "@/lib/apiClient";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -11,6 +11,7 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((s) => s.user.profile);
   const [loading, setLoading] = useState(true);
+  const hasCheckedAuth = useRef(false);
 
   // Initial load from localStorage if no user in Redux state
   useEffect(() => {
@@ -37,6 +38,10 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
 
   // Main authentication effect
   useEffect(() => {
+    // Prevent multiple simultaneous auth checks
+    if (hasCheckedAuth.current) return;
+    hasCheckedAuth.current = true;
+
     const checkAuth = async () => {
       try {
         setLoading(true);
@@ -75,13 +80,10 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
         
         // Update Redux state if we have valid user data
         if (data && data.user && typeof data.user === 'object' && data.user !== null) {
-          // Only update if user is different from current Redux state
-          if (!currentUser || JSON.stringify(currentUser) !== JSON.stringify(data.user)) {
-            dispatch(setUserProfile(data.user as Record<string, unknown>));
-            // Also update localStorage for persistence
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('user', JSON.stringify(data.user));
-            }
+          dispatch(setUserProfile(data.user as Record<string, unknown>));
+          // Also update localStorage for persistence
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('user', JSON.stringify(data.user));
           }
         }
         
@@ -98,7 +100,7 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
     };
 
     checkAuth();
-  }, [router, options?.requireAdmin, dispatch, currentUser]);
+  }, [router, options?.requireAdmin, dispatch]);
 
   return { user: currentUser, loading };
 }

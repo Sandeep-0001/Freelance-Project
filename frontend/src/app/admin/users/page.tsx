@@ -17,6 +17,8 @@ import {
   Phone,
   Lock,
   UserCircle,
+  UserPlus,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -76,6 +78,15 @@ function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Referral assignment modal state
+  const [showReferralModal, setShowReferralModal] = useState(false);
+  const [selectedUserForReferral, setSelectedUserForReferral] = useState<User | null>(null);
+  const [assigningReferral, setAssigningReferral] = useState(false);
+  const [referralForm, setReferralForm] = useState({
+    referralCode: "",
+    position: "" as "" | "left" | "right",
+  });
 
   // Create user form state
   const [createUserForm, setCreateUserForm] = useState({
@@ -218,6 +229,51 @@ function UsersPage() {
       showErrorToast(err instanceof Error ? err.message : "Failed to create user");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openReferralModal = (user: User) => {
+    setSelectedUserForReferral(user);
+    setReferralForm({ referralCode: "", position: "" });
+    setShowReferralModal(true);
+  };
+
+  const assignReferral = async () => {
+    if (!selectedUserForReferral) return;
+
+    if (!referralForm.referralCode.trim()) {
+      showErrorToast("Referral code is required");
+      return;
+    }
+
+    setAssigningReferral(true);
+    try {
+      const response = await fetch(`/api/admin/users/${selectedUserForReferral._id}/referral`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referralCode: referralForm.referralCode,
+          ...(referralForm.position && { position: referralForm.position }),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to assign referral");
+      }
+
+      showSuccessToast(data.message || "Referral assigned successfully");
+      setShowReferralModal(false);
+      setSelectedUserForReferral(null);
+      setReferralForm({ referralCode: "", position: "" });
+
+      // Refresh user list
+      await fetchUsers();
+    } catch (err) {
+      showErrorToast(err instanceof Error ? err.message : "Failed to assign referral");
+    } finally {
+      setAssigningReferral(false);
     }
   };
 
@@ -418,16 +474,31 @@ function UsersPage() {
 
               <tbody className="divide-y divide-zinc-100">
                 {users.map((user) => (
-                  <tr key={user._id} className="hover:bg-zinc-50/70 transition-colors">
+                  <tr 
+                    key={user._id} 
+                    className={[
+                      "transition-colors",
+                      !user.parent && user.role === "user" ? "bg-amber-50/50 hover:bg-amber-100/50" : "hover:bg-zinc-50/70"
+                    ].join(" ")}
+                  >
                     <td className="px-6 py-4 align-top">
-                      <div>
-                        <div className="text-sm font-bold text-zinc-900">{user.fullName}</div>
-                        <div className="text-sm text-zinc-500">{user.name}</div>
-                        {user.parent ? (
-                          <div className="mt-1 text-xs text-zinc-400">
-                            Referred by: {user.parent.name}
-                          </div>
-                        ) : null}
+                      <div className="flex items-start gap-2">
+                        {!user.parent && user.role === "user" && (
+                          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" title="No referral parent" />
+                        )}
+                        <div>
+                          <div className="text-sm font-bold text-zinc-900">{user.fullName}</div>
+                          <div className="text-sm text-zinc-500">{user.name}</div>
+                          {user.parent ? (
+                            <div className="mt-1 text-xs text-zinc-400">
+                              Referred by: {user.parent.name}
+                            </div>
+                          ) : user.role === "user" ? (
+                            <div className="mt-1 text-xs text-amber-600 font-semibold">
+                              ⚠️ No referral parent
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
 
@@ -483,6 +554,17 @@ function UsersPage() {
 
                     <td className="px-6 py-4 align-top">
                       <div className="flex items-center gap-2">
+                        {!user.parent && user.role === "user" && (currentUser as any)?.role === "super_admin" && (
+                          <button
+                            onClick={() => openReferralModal(user)}
+                            className="inline-flex items-center justify-center rounded-xl border border-sky-200 bg-sky-50 p-2 text-sky-700 transition hover:bg-sky-100"
+                            title="Assign Referral Parent"
+                            type="button"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                          </button>
+                        )}
+
                         {user.status === "active" ? (
                           <button
                             onClick={() => updateUserStatus(user._id, "suspended")}
@@ -780,6 +862,104 @@ function UsersPage() {
                     <>
                       <Plus className="h-4 w-4" />
                       Create User
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Assign Referral Modal */}
+        {showReferralModal && selectedUserForReferral && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-6 shadow-xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 to-emerald-600 text-white shadow-md">
+                    <UserPlus className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-extrabold text-zinc-900">Assign Referral Parent</h2>
+                    <p className="text-sm text-zinc-500">Link user to a referral parent</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowReferralModal(false)}
+                  className="rounded-2xl border border-zinc-200 p-2 text-zinc-600 transition hover:bg-zinc-50"
+                  type="button"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+                <p className="font-semibold text-amber-900">User Without Referral:</p>
+                <p className="mt-1 text-amber-800">{selectedUserForReferral.fullName}</p>
+                <p className="text-xs text-amber-700 mt-0.5">{selectedUserForReferral.email || selectedUserForReferral.mobile}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Referral Code <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter referral code"
+                    value={referralForm.referralCode}
+                    onChange={(e) => setReferralForm({ ...referralForm, referralCode: e.target.value })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 transition"
+                  />
+                  <p className="mt-1.5 text-xs text-zinc-500">
+                    Enter the referral code of the parent user
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-zinc-700">
+                    Position (Optional)
+                  </label>
+                  <select
+                    value={referralForm.position}
+                    onChange={(e) => setReferralForm({ ...referralForm, position: e.target.value as "" | "left" | "right" })}
+                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20 transition"
+                  >
+                    <option value="">Auto-assign (Recommended)</option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                  </select>
+                  <p className="mt-1.5 text-xs text-zinc-500">
+                    Leave as auto-assign to place user in the first available position
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowReferralModal(false)}
+                  disabled={assigningReferral}
+                  className="rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-bold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={assignReferral}
+                  disabled={assigningReferral}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-600 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:from-sky-700 hover:to-emerald-700 hover:shadow-xl disabled:opacity-50"
+                  type="button"
+                >
+                  {assigningReferral ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Assigning...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4" />
+                      Assign Referral
                     </>
                   )}
                 </button>
