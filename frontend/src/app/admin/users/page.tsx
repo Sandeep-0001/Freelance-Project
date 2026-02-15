@@ -484,7 +484,7 @@ function UsersPage() {
                     <td className="px-6 py-4 align-top">
                       <div className="flex items-start gap-2">
                         {!user.parent && user.role === "user" && (
-                          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" title="No referral parent" />
+                          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                         )}
                         <div>
                           <div className="text-sm font-bold text-zinc-900">{user.fullName}</div>
