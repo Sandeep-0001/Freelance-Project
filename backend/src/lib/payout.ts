@@ -63,6 +63,18 @@ async function distributeIncome({
       session ? { session } : undefined
     );
 
+    // Update parent's totalIncome atomically
+    await UserModel.updateOne(
+      { _id: parent._id },
+      { 
+        $inc: { 
+          totalIncome: amount,
+          totalBV: bv 
+        } 
+      },
+      session ? { session } : undefined
+    );
+
     incomesCreated++;
     currentUser = parent;
     level++;

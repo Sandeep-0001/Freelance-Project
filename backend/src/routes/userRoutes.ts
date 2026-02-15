@@ -27,6 +27,8 @@ router.get("/me", async (req, res) => {
         referralCode: user.referralCode,
         profileImage: user.profileImage,
         parentUserId: user.parent?.toString() ?? null,
+        totalIncome: user.totalIncome ?? 0,
+        totalBV: user.totalBV ?? 0,
       },
     });
   } catch (err: unknown) {

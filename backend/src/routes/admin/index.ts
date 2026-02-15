@@ -445,7 +445,7 @@ export function registerAdminRoutes(app: Express) {
         .lean();
       
       // Format the response to include category in a consistent way
-      const formattedServices = services.map(service => {
+      const formattedServices = services.map((service: any) => {
         const result: any = {
           ...service,
         };
@@ -453,11 +453,11 @@ export function registerAdminRoutes(app: Express) {
         // If categoryId is populated (it's an object), add it as 'category'
         if (service.categoryId && typeof service.categoryId === 'object') {
           result.category = {
-            _id: service.categoryId._id,
-            name: service.categoryId.name,
-            code: service.categoryId.code
+            _id: (service.categoryId as any)._id,
+            name: (service.categoryId as any).name,
+            code: (service.categoryId as any).code
           };
-          result.categoryId = service.categoryId._id; // Keep the ID as string for consistency
+          result.categoryId = (service.categoryId as any)._id; // Keep the ID as string for consistency
         } else {
           // categoryId is either a string ID (not populated), null, or empty
           result.categoryId = service.categoryId || undefined;
@@ -534,7 +534,7 @@ export function registerAdminRoutes(app: Express) {
       });
 
       // Fetch the created service with populated category
-      const populatedService = await ServiceModel.findById(service._id)
+      const populatedService: any = await ServiceModel.findById(service._id)
         .populate('categoryId', 'name code')
         .lean();
 
@@ -582,7 +582,7 @@ export function registerAdminRoutes(app: Express) {
       const body = schema.parse(req.body);
       await connectToDatabase();
 
-      const service = await ServiceModel.findByIdAndUpdate(
+      const service: any = await ServiceModel.findByIdAndUpdate(
         req.params.id, 
         body, 
         { new: true }

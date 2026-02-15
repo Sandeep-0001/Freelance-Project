@@ -133,8 +133,9 @@ router.get("/subcategory/:subcategorySlug", async (req, res) => {
       return res.status(404).json({ error: "Subcategory not found", services: [] });
     }
     
-    // Get parent category
-    const category = await CategoryModel.findOne({ _id: subcategory.categoryId }).lean();
+    // Get parent category (convert _id to string for matching)
+    const categoryId = typeof subcategory.categoryId === 'string' ? subcategory.categoryId : String(subcategory.categoryId);
+    const category = await CategoryModel.findById(categoryId).lean();
     
     // Get services in this subcategory
     const services = await ServiceModel.find({ 

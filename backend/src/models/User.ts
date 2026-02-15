@@ -110,6 +110,10 @@ const userSchema = new Schema(
     // Payment Settings (for admin)
     paymentLinkEnabled: { type: Boolean, default: false },
     upiLink: { type: String, trim: true },
+
+    // Income tracking
+    totalIncome: { type: Number, default: 0, min: 0, index: true },
+    totalBV: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

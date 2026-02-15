@@ -27,6 +27,8 @@ type MeResponse = {
     role: "super_admin" | "admin" | "moderator" | "user";
     referralCode: string;
     parent: string | null;
+    totalIncome?: number;
+    totalBV?: number;
   };
 };
 
@@ -60,10 +62,14 @@ export default function DashboardPage() {
   const [addedToCart, setAddedToCart] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
-  const totalIncome = useMemo(
-    () => incomes.reduce((sum, inc) => sum + (inc.amount ?? 0), 0),
-    [incomes]
-  );
+  // Use totalIncome from user profile for better performance
+  // Falls back to calculating from income records if not available
+  const totalIncome = useMemo(() => {
+    if (me?.totalIncome !== undefined) {
+      return me.totalIncome;
+    }
+    return incomes.reduce((sum, inc) => sum + (inc.amount ?? 0), 0);
+  }, [me?.totalIncome, incomes]);
 
   async function loadAll() {
     setError(null);

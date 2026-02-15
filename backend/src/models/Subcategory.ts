@@ -1,7 +1,9 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { createId } from "@paralleldrive/cuid2";
 
 const subcategorySchema = new Schema(
   {
+    _id: { type: String, default: createId },
     name: { 
       type: String, 
       required: true, 
@@ -29,9 +31,9 @@ const subcategorySchema = new Schema(
       maxlength: 10 
     },
     
-    // Parent category reference
+    // Parent category reference (using String to match Category model)
     categoryId: { 
-      type: Schema.Types.ObjectId, 
+      type: String, 
       ref: "Category", 
       required: true 
     },
@@ -75,7 +77,7 @@ const subcategorySchema = new Schema(
 );
 
 export type Subcategory = InferSchemaType<typeof subcategorySchema> & {
-  _id: mongoose.Types.ObjectId;
+  _id: string;
 };
 
 export const SubcategoryModel: Model<Subcategory> =

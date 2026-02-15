@@ -50,6 +50,12 @@ const serviceSchema = new Schema(
     // Category reference
     categoryId: { type: String, ref: "Category" },
     
+    // Subcategory reference (optional)
+    subcategoryId: { type: String, ref: "Subcategory" },
+    
+    // Who added this service
+    addedBy: { type: String, enum: ["admin", "user"], default: "admin" },
+    
     // Tags for filtering and search
     tags: [{ type: String, trim: true }],
     
@@ -71,6 +77,8 @@ const serviceSchema = new Schema(
 // Note: slug index is created automatically via unique: true constraint above
 serviceSchema.index({ status: 1, isFeatured: 1 });
 serviceSchema.index({ categoryId: 1 });
+serviceSchema.index({ subcategoryId: 1 });
+serviceSchema.index({ addedBy: 1, status: 1 });
 serviceSchema.index({ tags: 1 });
 serviceSchema.index({ rating: -1 });
 

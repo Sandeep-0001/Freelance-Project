@@ -140,6 +140,20 @@ async function distributeBusinessVolumeInSession(options: {
 
   if (purchaseObjectId && incomes.length > 0) {
     await IncomeModel.insertMany(incomes, { session });
+    
+    // Update totalIncome for each recipient user atomically
+    for (const income of incomes) {
+      await UserModel.updateOne(
+        { _id: income.toUser },
+        { 
+          $inc: { 
+            totalIncome: income.amount,
+            totalBV: income.bv 
+          } 
+        },
+        { session }
+      );
+    }
   }
 
   return {

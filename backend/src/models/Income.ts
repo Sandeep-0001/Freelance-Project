@@ -16,6 +16,10 @@ const incomeSchema = new Schema(
   { timestamps: true }
 );
 
+// Compound indexes for efficient queries
+incomeSchema.index({ toUser: 1, createdAt: -1 }); // For user income history with sorting
+incomeSchema.index({ toUser: 1, level: 1 }); // For income by level queries
+
 export type Income = InferSchemaType<typeof incomeSchema> & {
   _id: mongoose.Types.ObjectId;
 };
