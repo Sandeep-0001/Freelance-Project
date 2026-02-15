@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch, readApiBody } from "@/lib/apiClient";
 import { ArrowLeft, KeyRound, LockKeyhole, Mail } from "lucide-react";
@@ -9,7 +9,7 @@ import { showSuccessToast, showErrorToast } from "@/lib/toast";
 
 const brandGradient = "linear-gradient(90deg, #22C55E 0%, #0EA5E9 100%)";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -244,5 +244,13 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
