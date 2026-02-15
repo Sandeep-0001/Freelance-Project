@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, readApiBody } from "@/lib/apiClient";
 import { useAuth } from "@/lib/useAuth";
+import { useRouter } from "next/navigation";
 import {
   IndianRupee,
   BarChart3,
@@ -50,7 +51,8 @@ type Income = {
 };
 
 export default function DashboardPage() {
-  useAuth(); // Protect this page - require authentication
+  const { user } = useAuth(); // Protect this page - require authentication
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const cart = useAppSelector((s) => s.cart);
   const [me, setMe] = useState<MeResponse["user"] | null>(null);
@@ -61,6 +63,16 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [addedToCart, setAddedToCart] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Redirect admin users to admin panel
+  useEffect(() => {
+    if (user && typeof user === 'object' && 'role' in user) {
+      const userRole = user.role as string;
+      if (["super_admin", "admin", "moderator"].includes(userRole)) {
+        router.replace("/admin");
+      }
+    }
+  }, [user, router]);
 
   // Use totalIncome from user profile for better performance
   // Falls back to calculating from income records if not available

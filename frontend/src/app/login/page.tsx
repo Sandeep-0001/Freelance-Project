@@ -72,6 +72,11 @@ export default function LoginPage() {
 
       showSuccessToast("Login successful! Redirecting...");
 
+      // Clear any stale localStorage data to prevent role conflicts
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('user');
+      }
+
       // Give browser a beat to persist the cookie
       await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -81,9 +86,13 @@ export default function LoginPage() {
         const meRes = await apiFetch("/api/me");
         const meBody = await readApiBody(meRes);
         const meJson = meBody.json as any;
-        if (meRes.ok) {
-          dispatch(setUserProfile(meJson.user ?? null));
+        if (meRes.ok && meJson.user) {
+          dispatch(setUserProfile(meJson.user));
           userRole = meJson.user?.role ?? "user";
+          // Store fresh user data in localStorage
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('user', JSON.stringify(meJson.user));
+          }
         }
       } catch {
         // ignore
@@ -91,7 +100,10 @@ export default function LoginPage() {
 
       // Redirect based on role - admin roles go to admin panel, others to dashboard
       const isAdminRole = ["super_admin", "admin", "moderator"].includes(userRole);
-      router.push(isAdminRole ? "/admin" : "/dashboard");
+      const targetPath = isAdminRole ? "/admin" : "/dashboard";
+      
+      // Use replace instead of push to prevent back button issues
+      router.replace(targetPath);
       router.refresh();
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);

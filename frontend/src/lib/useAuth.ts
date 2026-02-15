@@ -47,8 +47,12 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
 
     const checkAuth = async () => {
       try {
+        // If we already have user data from localStorage, use it immediately
+        // and skip showing loading state
+        const hasUserData = currentUser !== null;
+        
         // Only show loading if we don't have a user yet
-        if (!currentUser) {
+        if (!hasUserData) {
           setLoading(true);
         }
         
@@ -96,7 +100,7 @@ export function useAuth(options?: { requireAdmin?: boolean }) {
         
         // Check if admin is required
         if (options?.requireAdmin && data?.user && typeof data.user === 'object' && 'role' in data.user && !["super_admin", "admin", "moderator"].includes(data.user.role as string)) {
-          router.push("/dashboard");
+          router.replace("/dashboard");
         }
       } catch (error) {
         console.error("Auth check failed:", error);
